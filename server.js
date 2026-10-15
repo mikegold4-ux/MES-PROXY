@@ -13,30 +13,7 @@ const PERP_PAIRS = [
 
 const priceCache = {};
 
-function fetchMarkPrice(perpId) {
-  return new Promise((resolve) => {
-    const path = `/products/${perpId}/book?level=1`;
-    const options = { hostname: 'api.exchange.coinbase.com', path, method: 'GET', headers: { 'User-Agent': 'MES-Proxy/1.0' } };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const bid = parseFloat(json.bids?.[0]?.[0] || 0);
-          const ask = parseFloat(json.asks?.[0]?.[0] || 0);
-          if (bid > 0 && ask > 0) resolve((bid + ask) / 2);
-          else resolve(null);
-        } catch(e) { resolve(null); }
-      });
-    });
-    req.on('error', () => resolve(null));
-    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
-    req.end();
-  });
-}
-
-function fetchCandlePrice(perpId) {
+function fetchPrice(perpId) {
   return new Promise((resolve) => {
     const path = `/products/${perpId}/candles?granularity=ONE_MINUTE&limit=2`;
     const options = { hostname: 'api.exchange.coinbase.com', path, method: 'GET', headers: { 'User-Agent': 'MES-Proxy/1.0' } };
@@ -57,27 +34,21 @@ function fetchCandlePrice(perpId) {
   });
 }
 
-async function fetchPrice(perpId) {
-  const mark = await fetchMarkPrice(perpId);
-  if (mark) return mark;
-  return fetchCandlePrice(perpId);
-}
-
 async function pollPrices() {
   for (let i = 0; i < PERP_PAIRS.length; i++) {
     const id = PERP_PAIRS[i];
     const price = await fetchPrice(id);
     if (price) priceCache[id] = { price, ts: Date.now() };
-    if (i < PERP_PAIRS.length - 1) await sleep(200);
+    if (i < PERP_PAIRS.length - 1) await sleep(300);
   }
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 (async () => {
-  console.log('[MES-Proxy] Starting price poll loop (bid/ask mid)...');
+  console.log('[MES-Proxy] Starting price poll loop...');
   await pollPrices();
-  setInterval(pollPrices, 3000);
+  setInterval(pollPrices, 5000);
 })();
 
 const wss = new WebSocket.Server({ port: PORT });
